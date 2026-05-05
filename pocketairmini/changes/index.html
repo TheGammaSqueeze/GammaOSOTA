@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GammaOS Next - Changelog</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 16px; background: #0d1117; color: #e6edf3; line-height: 1.6; }
+  h1, h2, h3, h4 { color: #58a6ff; }
+  h2 { border-bottom: 1px solid #30363d; padding-bottom: 8px; margin-top: 32px; }
+  a { color: #58a6ff; }
+  code { background: #161b22; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
+  pre { background: #161b22; padding: 12px; border-radius: 8px; overflow-x: auto; }
+  pre code { padding: 0; background: none; }
+  blockquote { border-left: 3px solid #30363d; margin: 8px 0; padding: 4px 16px; color: #8b949e; }
+  details { margin: 8px 0; }
+  summary { cursor: pointer; font-weight: 600; color: #58a6ff; padding: 4px 0; }
+  ul { padding-left: 24px; }
+  li { margin: 4px 0; }
+  hr { border: none; border-top: 1px solid #30363d; margin: 32px 0; }
+  strong { color: #f0f6fc; }
+</style>
+</head>
+<body>
+<h1>GammaOS Next - Changelog</h1>
+<h2>v1.3.2 (May 2026)</h2>
+<p>A stability and compatibility release focused on lock screen reliability, Nano boot improvements, and input fixes.</p>
+<h3>Fixed</h3>
+<ul>
+<li><strong>Lock screen unlock loop on software keymaster devices</strong> (e.g. AYANEO Pocket AIR Mini): entering the correct PIN/password/pattern crashed SystemUI in a loop instead of unlocking. Root cause was the HIDL Keymaster 4.0 compat layer rejecting auth tokens for SID-bound synthetic password keys. The SP protector key now skips auth-binding when the keymaster security level is SOFTWARE - the inner credential-derived encryption layer still protects the blob. Devices with hardware-backed keymaster/KeyMint are unaffected.</li>
+<li><strong>GammaPad grabbed the touchscreen when no controller was defined</strong>, leaving the user with only a mouse cursor and no touch input. When <code>persist.gammaos.gamepad.devices</code> was empty, <code>shouldGrabDevice()</code> returned true for all devices, bypassing gamepad capability checks. Now returns false so only devices passing the standard stick-axes + gamepad-button checks are grabbed.</li>
+<li><strong><code>locksettings verify</code> crashed in Nano minimal boot</strong> with a NullPointerException on TrustManager and DevicePolicyManager. Added null guards in <code>LockPatternUtils.reportSuccessful/FailedPasswordAttempt()</code>.</li>
+<li><strong>Libretro Quick Resume preview</strong> broken for zip ROMs, CE storage race on early boot, and RZIP save state format not recognised.</li>
+<li><strong>SensorService crash-loop</strong> on Nano boot from residual boot timing log calls.</li>
+</ul>
+<h3>Added</h3>
+<ul>
+<li><strong>Nano CE auto-unlock</strong>: when a PIN/password/pattern is set in normal Android, the credential is cached in DE storage. On Nano boot, a new <code>nano-ce-unlock</code> service reads it and verifies against LockSettingsService, unlocking CE storage so game saves and ROM data are accessible without the Android lock screen.</li>
+<li><strong>Boot animation</strong> with 60 fps fade-in/out and XP-style loading bar.</li>
+<li><strong>Rockchip DP and HDMI audio output</strong>: auto-detects Rockchip boards via <code>ro.hardware</code> and registers external audio devices on hotplug. DP over USB-C registers as SPDIF (matching the vendor HAL's internal mapping of the <code>rockchipdp0</code> card), HDMI registers as DEVICE_OUT_HDMI (for boards with the <code>rockchiphdmi</code> card via DTBO). Preferred routing: HDMI > DP > speaker, with independent hotplug tracking and automatic fallback to speakers on disconnect.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li><strong>WiFi unable to connect on Rockchip devices</strong>: <code>customization.sh</code> killed <code>tee-supplicant</code> on every boot, breaking the OPTEE-backed KeyMint HAL. All <code>keystore2</code> key generation calls hung indefinitely, preventing WPA authentication. Removed the <code>tee-supplicant</code> kill so the TEE stays available for cryptographic operations.</li>
+</ul>
+<hr>
+<h2>v1.3.0 / v1.3.1 (April 2026)</h2>
+<p>This is a milestone release: a brand-new <strong>boot-to-game</strong> experience called <strong>GammaOS Nano</strong>, a full <strong>in-place OTA update system</strong>, a <strong>native gamepad daemon</strong> that replaces the older input plumbing, a <strong>Settings Toolbox</strong> that finally exposes GammaOS's hidden <code>persist.gammaos.*</code> knobs to end users, and a mountain of stability and boot-speed wins underneath.</p>
+<p><strong>First device release: Anbernic RG Vita Pro.</strong> This is the first handheld to ship with GammaOS Next v1.3.0 and the first device to get a <strong>factory overclock</strong> baked into the build: A72 big cluster raised from 2208 to 2304 MHz, Mali-G52 GPU from 900 to 1100 MHz, A53 voltage retuned for higher sustained clocks under thermal load, delivering up to <strong>+33.6% sustained throughput</strong> on hot runs. The Vita Pro has no active cooling, so a small aftermarket heatsink is recommended to hold those clocks for longer.</p>
+<details>
+<summary>New: GammaOS Nano - instant boot to games</summary>
+<blockquote><strong>Big picture:</strong> handhelds spend tens of seconds booting a full Android stack you never interact with. Nano carves out a native, minimal boot path so you power on and see your game or XMB menu within a few seconds, then the rest of Android quietly comes up in the background.</blockquote>
+<ul>
+<li><strong>Added - Minimal Android runtime (<code>sys.gammaos.minimal_boot=1</code>):</strong> skips ~120 non-essential SystemServer services (print, NFC, TV, MIDI, WebView preload, dreams, wallpaper manager, secondary zygote preload, etc.) and parallelises zygote startup. On RG DS this cuts cold boot from ~168 s to ~27 s to <code>sys.boot_completed</code>, with SystemServer‑to‑RetroArch in about 1.6 s.</li>
+<li><strong>Added - PS3/PSP-style XMB menu</strong> rendered natively (FreeType glyphs, mixed text/emoji batching, flowing-wave background, stick navigation, hold-to-repeat with 350 ms initial / 45 ms steady, black-outlined text). The whole engine is split across seven focused TUs (<code>NanoMenu*.cpp</code>) instead of one 9 000-line file.</li>
+<li><strong>Added - Columns you actually use:</strong> Recently Played parses RetroArch <code>content_history.lpl</code>; a search column with a 5x10 OSK; Applications column backed by a SystemServer-generated label cache; a pinned Settings column (leftmost) with Wi-Fi and Bluetooth full-screen overlays.</li>
+<li><strong>Added - Native libretro runner:</strong> <code>LibretroRunner.cpp</code> dlopens a core <code>.so</code> directly into the Nano EGL context before zygote even starts. You see a playable game preview around T+3 s, then hand off seamlessly to full RetroArch when the framework is ready.</li>
+<li><strong>Added - Native Drastic runner (<code>drastic-nano</code>):</strong> standalone init service that runs DraStic with real audio using its actual <code>/data/user/0/com.dsemu.drastic</code> data directory. Drops first DS frame at T+1.5 s (down from 15 s) via in-memory patches that skip the blocking <code>slCreateEngine</code> audio init and fix the BG-layer rendering bug. Includes touch/stylus input (real <code>gt9xx-0</code> node, DS 256x192 scaling), correct button slots after reverse-engineering DraStic's keymap, stick-as-DPad layering, overlay menu with runtime shader switching, and dual-DSI Frame Sync for phase-aligned panels.</li>
+<li><strong>Added - Dedicated <code>drastic-android-mod</code> APK</strong> (six smali patches) replaces stock r2.6.0.4a: ESC saves to slot 9 and <code>finishAffinity()</code>, autosave on any exit, A/B remap, detail-panel ENTER bypass. Means closing the game never loses progress, Quick Resume always has a fresh state, and controller navigation works throughout the app.</li>
+<li><strong>Added - DRM direct-output path:</strong> while Nano owns DRM master, NEON-blitted AHB buffers with DRM PRIME zero-copy scan directly to the panel. Per-frame flip work drops from 3 ms to 150 us; triple-buffer AHB ring with per-slot EGL fences kills microhitches; per-CRTC page-flip pacing cuts secondary-display EBUSY noise from 76/min to 1/min. Result: a buttery 60 fps XMB and Quick Resume preview even on thermally-constrained handhelds.</li>
+<li><strong>Added - Quick Resume that survives reboots:</strong> <code>persist.gammaos.nano.qr_prepared</code> is primed at launch (before any reboot), cleared on clean exit, and FUSE-mount-gated (<code>isQrRomStorageReady</code>) so external-SD ROMs never fail to resolve. Applies only to Drastic + RetroArch launches; Boot Android / Recovery / Safe Mode / XMB apps all clear it so you never auto-resume a stale game.</li>
+<li><strong>Added - Quick Resume preview controls:</strong> during the live Quick Resume preview, <strong>short-press BACK</strong> hides the "Quick Resuming..." overlay text so you can keep playing on the preview with no visual clutter, and <strong>long-press BACK (3 seconds)</strong> exits the game and returns to the Nano menu. All other buttons (including SELECT) are forwarded to the game as normal input.</li>
+<li><strong>Added - Quick Resume toggle (R1):</strong> pressing R1 inside the Nano menu toggles Quick Resume on/off, with a green/red dot indicator and "Quick Resume" label in the top-right corner of both menu layouts. State persists via <code>persist.gammaos.nano.quick_resume</code>.</li>
+<li><strong>Added - Menu-layout toggle (L1):</strong> inside Nano, pressing L1 toggles between the <strong>XMB</strong> layout (PlayStation-style cross-media bar with columns, settings overlays, and battery/time/WiFi/BT HUDs) and a simpler <strong>List</strong> layout. Choice is remembered across reboots via <code>persist.gammaos.nano.xmb_mode</code>.</li>
+<li><strong>Added - Multi-path ROM scanner</strong> with case-insensitive folder matching across internal + SD storage, async threaded scans, SELECT manual refresh, 30 s background re-scan, and a 60 s post-boot grace + path-count guard so a late-mounting SD card cannot wipe your library.</li>
+<li><strong>Added - Per-display wallpaper split</strong> (nano renders wallpaper only on secondaries, XMB only on your chosen primary via <code>persist.gammaos.nano.primary_display</code>) plus <code>drm_flip_h/_v</code> props to correct mirror-mounted panels.</li>
+<li><strong>Added - Battery + time + Wi-Fi + Bluetooth HUD</strong> at 0.5 Hz, brightness/volume HUDs driven through real AudioService (so <code>volume_music_speaker</code> actually persists), and a full Power menu (Sleep / Shutdown / Boot Android / Recovery / Safe Mode / Boot Nano) with inline brightness slider.</li>
+<li><strong>Added - Wi-Fi and Bluetooth in minimal boot</strong> via opt-in <code>persist.gammaos.nano.wifi=1</code>: a <code>gammaos-net</code> root helper bridges Wi-Fi/BT calls, auto-confirms SSP/PIN pairing, retries failed LE/BR-EDR on the opposite transport, and survives stale <code>opPackageName</code> via an AVRCP absolute-volume fallback.</li>
+<li><strong>Added - SensorService started unconditionally in minimal boot</strong> so SDL emulators (PPSSPP, vita3k) no longer hang on <code>ASensorManager_getInstance</code>.</li>
+<li><strong>Added - DE cache quick-resume</strong>: ROMs, cores, configs and saves copied to <code>/data/system/nano_cache/</code> and accessed directly (no bind-mounts), with delta-sync and ROM-mismatch guard so re-launches stay snappy.</li>
+<li><strong>Added - Native libretro + Vulkan shader chains</strong> for RetroArch <code>.glslp</code>/<code>.slangp</code> presets (26/116 CRT and 36/80 handheld LCD shaders compile natively), plus a custom Vulkan-GLSL-to-SkSL transpiler for multi-pass chains with <code>#pragma parameter</code>, LUTs, and loop conversion.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li><strong>No more black screen in normal boot</strong> when Nano's DRM takeover races SurfaceFlinger: <code>StartPropertySetThread</code> now waits for persist-props readiness and only starts <code>gammaos-nano</code> when the skip-nano flag is clear.</li>
+<li><strong>No more SystemServer crash on game launch:</strong> added an <code>sNanoLaunchInProgress</code> re-entry guard so <code>forceStopPackage</code> cannot recurse into <code>startHomeOnTaskDisplayArea</code> and blow the stack.</li>
+<li><strong>No more 20 s hang on game launch:</strong> the synchronous <code>setclock_max.sh</code> CPU-pinning script now runs in the background.</li>
+<li><strong>Lost controllers after hotplug fixed:</strong> tighter <code>IN_DELETE</code> matching plus a 1 Hz defensive sweep re-enumerates <code>/dev/input/event*</code> so a disconnected Xbox pad never stays gone.</li>
+<li><strong>No more orphan emulator processes</strong> hogging an RT CPU core after you exit a game.</li>
+<li><strong>Input bleed-through blocked</strong> via a timestamp fence on <code>InputDispatcher</code> plus a boolean gate cleared only on true focus entry.</li>
+<li><strong>Quick Resume reliability:</strong> survives power-menu reboots, no longer reads stale props, handles legacy XMB cache format, and clears <code>qr_prepared</code> when you exit back to Nano.</li>
+<li>Dozens of smaller Nano fixes: XMB icons clipped in HWC mode, QR text collapsed to origin in HWC, overlay VBO leak ("Quick Resuming..." missing on dual screens), loading screen upside down in DRM, half-speed libretro preview, drastic forced-tall desync after exit+re-entry, <code>LockSettingsService</code> NPE loop, wallpaper persistence, FX shader stutter on low-precision GPUs, orphaned bootanim frames rendering over the Nano menu, and more.</li>
+</ul>
+</details>
+<details>
+<summary>New: GammaOS OTA - in-place updates, no recovery hop</summary>
+<blockquote><strong>Big picture:</strong> old-school OTAs reboot into recovery, sideload a zip, verify, then reboot. GammaOS OTA flashes the full system image in place, on the running device, with a full-screen progress UI and no trip through recovery. Optimised for small-RAM handhelds that cannot buffer a full system verification.</blockquote>
+<ul>
+<li><strong>Added - <code>gammaos-ota</code> native binary</strong> with EGL/GLES2 UI, FreeType text, gamepad/keyboard/touch input, and a file-picker for manual package selection. SurfaceFlinger is kept alive throughout the flash so you always see progress.</li>
+<li><strong>Added - Direct block-device writes to RO-mounted partitions</strong>, with a tmpfs bind-mount over <code>/system/bin</code> and <code>/system/lib64</code> to avoid page-cache conflicts, and a decompress-to-<code>/data</code>-then-stream strategy for low-RAM safety.</li>
+<li><strong>Added - Logical partition (super) flash end-to-end:</strong> authoritative extents via <code>liblp ReadMetadata</code>, pre-resize cache before framework stop, <code>dmctl replace</code> to reload the dm-linear table without the DM read-only flag, tmpfs staging at <code>/data/gammaos-ota-stage</code>.</li>
+<li><strong>Added - Low-RAM-safe flashing:</strong> vendor bind-mount, triple <code>drop_caches</code> on framework stop, periodic flush every 256 MB during writes. Verified on 1 GB devices.</li>
+<li><strong>Added - <code>O_DIRECT</code> SHA-256 readback verification</strong> with a smart skip for mounted logical partitions so 3.7 GB system readbacks never trigger an OOM kernel panic.</li>
+<li><strong>Added - Full/Lite variant routing:</strong> <code>ro.gammaos.variant</code> (lowercase <code>full</code>/<code>lite</code>) is slotted into the manifest URL (<code>https://ota.gammaos.sh/api/v1/{device}/{variant}</code>). <code>tdgsi_arm64_ab</code> no longer leaks into URLs.</li>
+<li><strong>Added - Dedicated compatibility check:</strong> OTAs now validate against <code>ro.gammaos.build.version</code> (1.3.0) instead of <code>ro.lineage.build.version</code> (21.0), with <code>>=</code> comparison so point releases install cleanly.</li>
+<li><strong>Added - <code>gen_ota_package.sh</code></strong> packaging script with parallel XZ compression, SHA-256 hashing, widened partition list (<code>system_dlkm</code>, <code>vendor_dlkm</code>, <code>odm_dlkm</code>, <code>vendor_boot</code>, <code>vbmeta_system</code>, <code>vbmeta_vendor</code>), and build-time minimum-battery gating.</li>
+<li><strong>Added - Updater hand-off polish:</strong> the in-app progress dialog stays visible until <code>gammaos-ota</code>'s fullscreen overlay renders, so there is no perceptible blank window between the two.</li>
+<li><strong>Added - Dedicated <code>gammaosota</code> SELinux domain</strong> (mirrored to 34.0 and 202404 prebuilts).</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Display-version truncation in build strings (<code>GammaOS Next Lite v1.3.0</code> now survives Make's whitespace splitting).</li>
+<li>A/B fallback tries both slots with <code>blockdev --setrw</code> for physical partitions.</li>
+<li>Correct partition index passed through to UI so progress bars match the partition actually being written.</li>
+<li>Unreliable per-SoC battery sysfs removed from runtime - minimum battery is enforced at package-build time instead.</li>
+</ul>
+</details>
+<details>
+<summary>New: GammaPad - native gamepad daemon with full UI</summary>
+<blockquote><strong>Big picture:</strong> gamepads on Android have never been great - partial <code>.kl</code> mappings, missing per-app profiles, broken triggers, no combo keys, clunky mouse mode, no calibration. GammaPad replaces the whole stack with a native daemon that exclusively grabs physical pads, merges them into a single clean virtual device, and exposes everything in Settings with a live input tester.</blockquote>
+<ul>
+<li><strong>Added - Native daemon</strong> (<code>frameworks/native/services/gammapad/</code>) that <code>EVIOCGRAB</code>s physical pads, runs <code>.kl</code> parsing with heuristic fallback, does per-axis calibration with circular deadzones and inversion, supports axis-to-button triggers with hysteresis, bidirectional analog/DPAD conversion, virtual/passthrough blacklists, and forwards force feedback. Config hot-reloads via <code>config_version</code> bump - you never need to re-plug.</li>
+<li><strong>Added - Full Settings UI</strong> with live input tester, multi-step calibration wizard, remap dialog with physical-input detection, activity picker for the Launch Activity action, and per-app profile management with an icon-based picker.</li>
+<li><strong>Added - Button combo mapping</strong> (Select+Start etc.) and <strong>per-app profiles</strong> tracked via TaskStackListener on a 300 ms foreground re-check.</li>
+<li><strong>Added - Mouse mode you can actually use:</strong> virtual multi-touch (Protocol B, slot cap at 1 for reliable drag), 1:1 cursor-follow, framework acceleration skipped, cursor-fade prevented, coexisting hover + virtual touch, configurable scroll speed, Select+R1 hold toggle, per-display orientation via <code>primary_touch_orientation</code>.</li>
+<li><strong>Added - Hides physical device nodes while captured</strong> (default on). Your gamepad disappears from <code>/dev/input/</code> entirely while the daemon has it, with state-file-based crash recovery and a <code>gammapad_restore</code> binary for clean shutdown.</li>
+<li><strong>Added - Circle-to-square stick expansion</strong> (so ±32767 is reachable at diagonals on square-gate sticks) and per-device preset normalisation (so Xbox BT PID 0x0b13 and other PIDs both land on the layout SDL/GameMaker expects).</li>
+<li><strong>Added - Direct force-feedback output mode</strong> that writes <code>FF_RUMBLE</code> straight to the kernel device (e.g. <code>sc27xx:vibrator</code>), bypassing the 25 ms binder IPC.</li>
+<li><strong>Added - "Launch Activity" button action</strong> (ordinal 12) - bind any hardware key to any app/activity, selected via an activity picker with search.</li>
+<li><strong>Added - Screen Mapping:</strong> on-screen overlay editor that maps gamepad buttons, sticks, and DPAD to multi-touch, per-app, with radial selector, per-button colours, bounding-box resize, pinch-zoom, tap-to-delete, smart non-overlap placement, opacity slider, QS tile toggle + long-press editor, and 25-language translations.</li>
+<li><strong>Added - Controller calibration moved into SetupWizard</strong> as a 5-step inline flow with right-stick auto-detection on every motion event, so you are not fighting controls before the device is even set up.</li>
+<li><strong>Added - 65 locales</strong> of translations covering GammaPad, JoystickLedPicker effect labels, combo/per-app strings, and every new UI string.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Right-stick axes now always use full signed 16-bit normalisation regardless of <code>.kl</code> remapping (stopping half-range right-stick output).</li>
+<li>Bipolar stick normalisation correctly applied when GAS/BRAKE triggers are present but RX/RY sticks are not.</li>
+<li>KEY_UP/DOWN/LEFT/RIGHT correctly converted to <code>ABS_HAT0X/Y</code> on devices that expose DPAD as keys but no hat axes.</li>
+<li>Vibration double-scaling eliminated; calibration deadzone slider now 0-50 % instead of raw 0-8192 with correct display alignment.</li>
+<li>Remap dialog no longer dismisses on BACK (captures both down + up events for non-touchscreen keys); HOME capture works via <code>sys.gammaos.gamepad.capture_mode</code>.</li>
+<li>Mouse-mode cursor lands correctly on rotated displays (pre-applies inverse rotation before InputFlinger's ROT_270).</li>
+<li>Short + long HOME press in RetroArch now sends ESC, mirroring BACK behaviour.</li>
+</ul>
+</details>
+<details>
+<summary>New: Settings, UX &amp; platform features</summary>
+<ul>
+<li><strong>Added - GammaOS Toolbox in Settings:</strong> surfaces 147 <code>persist.gammaos.*</code> knobs grouped by Display, BFI, CRT Shader, Dual-Stack, External Display, Multi-Display, IME, Audio, Gamepad, RGB LED, Launch Guard, System, Power, RetroArch, and USB/Docking. Type-appropriate Switch / List / EditText controls, a clear "advanced users" banner, and 58-locale translations. *Why it matters:* hundreds of hidden tuning knobs are finally visible without <code>setprop</code>.</li>
+<li><strong>Added - Lite / Full variant tag</strong> baked into <code>PRODUCT_MODEL</code> and the display version string (<code>GammaOS Next Full v1.3.0</code> / <code>GammaOS Next Lite v1.3.0</code>), so it's obvious at a glance which build you are running and OTAs route to the right variant.</li>
+<li><strong>Added - Display settings</strong> gained Reading Mode (via LineageHardwareManager <code>FEATURE_READING_ENHANCEMENT</code>), Color Calibration (RGB+saturation seekbars through LiveDisplayManager), and Custom Resolution (via <code>IWindowManager.setForcedDisplaySize</code>).</li>
+<li><strong>Added - DPAD / gamepad navigation</strong> across Settings homepage (focus-stealing removed, auto-collapse of the toolbar on DPAD input) and Quick Settings (full navigability with auto-expand from QQS, focus initiation, page-boundary navigation, dark-orange focus indicators, no escape to footer actions). *Why it matters:* handhelds without touchscreens can now fully operate Settings and QS.</li>
+<li><strong>Added - Phone-taskbar gating</strong> via <code>persist.gammaos.taskbar.phone</code> with a real-time toggle, so form factors that need the taskbar off can kill it without a reboot.</li>
+<li><strong>Added - QS tile blacklist</strong> (<code>persist.gammaos.qs.blacklist</code>, comma-separated with <code>_0</code>.._4<code> fragments) filters both the legacy QSTileHost and new </code>UserTileSpecRepository` pipelines. Per-device QS layouts without forking SystemUI.</li>
+<li><strong>Added - Lockscreen disabled by default</strong> for a console-like power-on experience; users still opt-in via Settings → Security.</li>
+<li><strong>Added - <code>adbd</code> always root</strong> from boot with no Developer Options toggle required.</li>
+<li><strong>Changed - PRODUCT_MODEL rebranded</strong> from "TrebleDroid with GApps" / "TrebleDroid vanilla" to "GammaOS Next Full" / "GammaOS Next Lite".</li>
+<li><strong>Changed - Daijisho bumped to 1.8.1 (426 split APKs)</strong> so Play signature and future updates persist; <strong>PPSSPP to 1.20.3</strong> (official signed); DraStic config refreshed (DefaultLayout=1, RotationMode=0, ExtDisplayBorder=5, LC_2.dat, per-game Pokemon DP layout); <code>setup.sh</code> auto-grants RECORD_AUDIO + BLUETOOTH_CONNECT to DraStic on first boot.</li>
+<li><strong>Changed - Translations expanded</strong> across LineageParts, Settings, frameworks/base, SetupWizard and all custom GammaOS apps (25-65 locales).</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li><strong>7-second SurfaceFlinger boot stall</strong> rooted out: <code>getBootDisplayModeSupport()</code> (a synchronous binder on the SF main thread) is deferred to lazy init, and <code>EventThread</code> replays hotplug events for late-registering clients. DisplayManagerService <code>onBootPhase</code> drops from 6636 ms to 111 ms; PackageManagerService starts 6.2 s earlier.</li>
+<li><strong>MediaTek HWC BliterNode crash on boot</strong> mitigated via a time-limited <code>debug.sf.disable_hwc_overlays</code> workaround scoped to affected SoCs (mt6761-mt6785, mt8766-mt8768). Starts as a 10 s window, extends until <code>persist.gammaos.setupwizard_run=0</code> and provisioned, then another 10 s grace. Earlier permanent-latch version replaced.</li>
+<li><strong>Bluetooth LE pairing</strong> fix for MediaTek controllers with a broken Supported Commands bitmask (byte 37=0x00 falsely reporting no LE extended support). Uses LE-features bit 12 as fallback detection; synthesises <code>CommandStatus</code> from <code>CommandComplete</code>; legacy <code>LE_CREATE_CONNECTION</code> fallback with scan-disable + direct peer addressing.</li>
+<li><strong>Bluetooth crash loop on malformed HCI responses</strong> (MT6785 especially) fixed by dropping a redundant ASSERT that fired before the existing <code>IsValid()</code> guard.</li>
+<li><strong><code>hwcomposer</code> rotation crashes</strong> tamed with <code>persist.gammaos.rotation_cooldown</code> (opt-in), SF skipping 5 HWC frames on orientation change, a 2 s GPU-only window, and a 1.5 s WMS rotation cooldown.</li>
+<li><strong>STREAM_MUSIC volume now persists</strong> across reboots: the multi-display volume controller seeds FROM the authoritative global stream on boot instead of overwriting it; <code>FLAG_FROM_KEY</code> / <code>SHOW_UI</code> gates removed so <code>cmd audio</code> and programmatic sets stay in sync with UI.</li>
+<li><strong>Timezone selection</strong> now applies when Settings is launched from a third-party launcher (Daijisho etc.) - picker fragments call <code>TimeZoneDetector</code> before <code>finish()</code>.</li>
+<li><strong>APEX signing details cached</strong> across boots at <code>/data/system/apex_sig_cache.bin</code>. PMS scan 1.8 s → 1.6 s, PMS ready ~300 ms earlier.</li>
+<li><strong>KPOC (offline charging) backlight</strong> now controlled via the AIDL/HIDL Light HAL on MediaTek SoCs, with a prime-to-nonzero hack so the subsequent set-to-0 is honoured. Power-press re-enables BLED.</li>
+<li><strong>Tablet/taskbar mode</strong> no longer leaks into gesture and 2-button nav (<code>shouldCreateNavBarAndTaskBar</code> gated on 3-button mode; Trebuchet <code>isTaskBarEnabled</code> gated on <code>isTablet</code>; live recheck on mode change).</li>
+<li><strong>SetupWizard</strong> recovery page removed; right-stick preview runs on every motion event so it works before calibration; button clipping fixed in immersive mode; <code>FLAG_KEEP_SCREEN_ON</code> added throughout.</li>
+<li><strong>GammaEQ stopped hammering property_service</strong> from the audio mix loop: atomic cache collapses redundant writes; self-heal throttled to 100 ms via a <code>thread_local</code> timestamp. Audioserver CPU drops from ~25 % to near-zero per mix buffer.</li>
+<li><strong>Build fingerprint shortened</strong> to fit <code>PROP_VALUE_MAX</code> (91 chars) so apps reading <code>__system_property_get</code> (e.g. Prince of Persia) stop crashing.</li>
+<li><strong><code>SideFpsEventHandler</code></strong> null-checks <code>FingerprintManager</code> before use (stops system_server crashing on devices that report <code>FEATURE_FINGERPRINT</code> without a HAL/service).</li>
+<li><strong><code>RenderEngine</code></strong> retries EGL init when GPU drivers aren't ready at boot.</li>
+<li><strong>Non-blocking <code>rw-system.sh</code></strong> via <code>rw_system_early</code> service (saves ~2 s); duplicate <code>vndk-detect</code> exec removed. Total boot on AYANEO Pocket AIR Mini (MT6785) cut from ~31.5 s to ~24.6 s.</li>
+<li><strong>3 GB low-RAM optimisation:</strong> build-time removal of DeskClock, PrintSpooler, PrintRecommendationService, ManagedProvisioning, DeviceAsWebcam, StatementService, CalendarProvider, AudioFX. Cached-process kill grace 600 s → 0 s. <code>phh-on-boot.sh</code> disables APEX bloat on first boot. 60 s compaction loop pushes cold pages to ZRAM. Vendor build.prop tuned (<code>heapgrowthlimit=96m</code>, <code>heapsize=192m</code>, PSI-based LMK). Idle RAM drops from 1200 MB to 800 MB.</li>
+<li>SELinux: property contexts added for <code>sys.gammaos.*</code>, <code>ro.gammaos.*</code>, <code>sys.gamma_tweak_update</code>; broad <code>appdomain</code> grants to GammaEQ/speaker-route props; 34.0 and 202404 prebuilts synced; new <code>gammaosota</code> domain; <code>gammaossetupwizard.te</code> added; <code>gammaoscustomization.te</code> updated.</li>
+</ul>
+</details>
+<hr>
+<h2>v1.2.2 (February 2026)</h2>
+<p>A <strong>DualStack-centric</strong> release. DualStack goes from a foundational feature to a real dual-screen gaming UX with per-screen controls, plus new Launch Guard and Secondary Display Launch tiles for the handhelds with two panels.</p>
+<details>
+<summary>New features</summary>
+<h3>DualStack</h3>
+<blockquote><strong>Why this matters:</strong> dual-screen handhelds (RG DS, DS-style devices) need per-screen volume, per-screen brightness, and IME routing to feel like real two-screen consoles instead of one stretched Android display.</blockquote>
+<ul>
+<li><strong>Added - Per-screen volume control (#140).</strong> New <code>GammaMultiDisplayVolumeDialog</code>, <code>GammaMultiVolumeStore</code>, AudioService + PlaybackActivityMonitor hooks, WindowManager APIs - each display holds its own media volume while DualStack is active.</li>
+<li><strong>Added - Per-screen brightness adjustment (#141).</strong> New <code>GammaSplitBrightnessTile</code>, per-physical-display <code>LocalDisplayAdapter</code>, brightness strategy selector honours the split.</li>
+<li><strong>Added - Force IME to a specific screen (#189).</strong> InputMethodManagerService, DisplayContent, and WindowManagerService route IME windows to the configured display.</li>
+<li><strong>Added - Hide SystemUI during DualStack (#216).</strong> Toggle in the DualStackControl app for clean in-game blanking.</li>
+<li><strong>Added - Full clean kill of background processes on DualStack launch (#170 / #194).</strong> Tears down every non-whitelisted process at DualStack app start, with an expanded sweep covering both displays.</li>
+<li><strong>Added - RetroArch clean-exit handshake on DualStack launch (#172).</strong> Prevents orphan emulator instances.</li>
+<li><strong>Added - DualStack apps run at top priority (#173).</strong> Per-process priority/scheduling boost on the active DualStack app.</li>
+<li><strong>Added - Multi-prop whitelist (#214).</strong> <code>persist.gammaos.dualstack.pkgs</code> now supports numbered continuation (<code>_1</code>, <code>_2</code>, ...), so the allowlist can exceed a single property's length limit.</li>
+</ul>
+<h3>Launch Guard &amp; Secondary Display Routing</h3>
+<blockquote><strong>Why this matters:</strong> handhelds accidentally launching Google apps or vendor junk on a secondary display was a recurring annoyance. Launch Guard blocks unwanted launches; Secondary Display Routing pins specific apps to the secondary panel on purpose.</blockquote>
+<ul>
+<li><strong>Added - Launch Guard app + Secondary Display Control app (#212)</strong> - two new standalone platform-signed apps (<code>com.gammaos.launchguardcontrol</code>, <code>com.gammaos.secondarydisplaycontrol</code>) with full layouts, shared per-app row UI, and companion SystemUI QS tiles (<code>LaunchGuardTile</code>, <code>SecondaryDisplayAppsTile</code>).</li>
+<li><strong>Added - Secondary Display state QS tile (#209)</strong> to toggle the secondary display on/off directly from Quick Settings.</li>
+<li><strong>Added - Secondary-display default app picker in Settings → Apps (#206)</strong> with <code>SecondaryHomePicker</code>/<code>SecondaryHomePreferenceController</code> and auto-launch on the secondary display.</li>
+<li><strong>Added - Multi-prop whitelist for Launch Guard and Secondary Display Routing (#215)</strong> using the same <code>_1</code>/<code>_2</code>/... continuation scheme.</li>
+</ul>
+<h3>Other</h3>
+<ul>
+<li><strong>Added - Android TV build target</strong> (<code>AndroidProducts.mk</code> entries + per-variant <code>lineage_tv_a64_*</code> makefiles + rewritten <code>generate.sh</code>) so every existing flavour has a TV counterpart.</li>
+<li><strong>Added - GCore+ (Core+) initial A14 patches</strong> for older-SoC devices: device/google/atv product definitions, TV framework overlay tweaks, SDK excluded-core-hardware permission list, phh Treble TV overrides for A14.</li>
+<li><strong>Added - <code>sys.gammaos.usb.connected</code> prop</strong> derived from the sticky <code>ACTION_USB_STATE</code> intent (OR of device and host) for cleaner USB-aware behaviour.</li>
+<li><strong>Added - Background-process limit prop for RG DS (#169).</strong></li>
+<li><strong>Added - <code>/storage</code> traversable for any app (#149)</strong> - <code>init.rc</code> + vold patched so any app can list <code>/storage</code> without hitting the zygote mount-namespace restriction.</li>
+<li><strong>Added - New CRT/LCD shader pipeline:</strong> new <code>GammaLcdShader</code> Skia filter, rewritten <code>GammaCrtSimple</code> and <code>GammaLcd3x</code>, ShaderControl UI vastly expanded.</li>
+<li><strong>Added - Apache License 2.0</strong> at the repository root.</li>
+</ul>
+</details>
+<details>
+<summary>Changes</summary>
+<ul>
+<li><strong>GammaShader performance optimisations</strong> across the system-wide pipeline.</li>
+<li><strong>DualStack stability + scheduling pass (#177):</strong> DisplayManagerService, DualStackController, RootWindowContainer and WindowManagerService reworked so stale processes are reaped consistently and the DualStack transition is idempotent. Net −700 lines of code in DualStackController.</li>
+<li><strong>"Display over apps" restriction disabled (#182)</strong> - Settings <code>Utils.java</code> returns the relaxed result for the gate.</li>
+</ul>
+</details>
+<details>
+<summary>Bug fixes</summary>
+<ul>
+<li><strong>SystemUI aspect-ratio in DualStack (#139)</strong> - no more stretched/squashed UI when the stack layout changes.</li>
+<li><strong>GammaEQ audio-preview delay (#210)</strong> - MainActivity reworked, <code>preview.mp3</code> replaced with a larger <code>preview_fast.wav</code>, follow-up stability pass on the preview-playback race.</li>
+<li><strong>Recents previews + Recents-not-showing-on-trigger</strong> fixes across NavigationBarControllerImpl, TaskbarActivityContext, AbsSwipeUpHandler, OverviewCommandHelper, TaskViewSimulator, RecentsView.</li>
+<li><strong>Trebuchet taskbar alignment/sizing (#207).</strong></li>
+<li><strong>Disabling the secondary display no longer blanks the primary (#208).</strong></li>
+<li><strong>SyncThing access to restricted directories (#142)</strong> - StorageManagerService + vold <code>Utils.cpp</code> / <code>EmulatedVolume.cpp</code> / <code>PublicVolume.cpp</code> whitelist it against the restricted-dir check.</li>
+<li><strong>GCore+ stability + unwanted lockscreen fix</strong> - <code>StatusBarStateControllerImpl</code> / <code>KeyguardStateControllerImpl</code> suppress the lockscreen path when the NoKeyguard TV overlay is active.</li>
+<li><strong>120 Hz / 60 Hz work-in-progress commit</strong> plus MediaTek offline-charging groundwork lays the foundation for the stability wins in v1.3.</li>
+</ul>
+</details>
+<hr>
+<h2>v1.2.1 (December 2025)</h2>
+<p>A short release focused on the D8300 display pipeline plus a Magisk refresh.</p>
+<details>
+<summary>New features</summary>
+<ul>
+<li><strong>Added - Half-4K external display flag.</strong> DisplayManagerService can mark an external display as forced half-4K and reapply the forced size with retries on hotplug, with a generation counter so a late retry never stomps a freshly re-attached display. Source modes at or above 3840x2160 are halved; non-4K sources are untouched.</li>
+<li><strong>Added - D8300 120 Hz vsync / BFI enforcement.</strong> On refresh-lock toggle, SurfaceFlinger resyncs to real hardware VSYNC, reapplies phase config, disables synthetic VSYNC, clears layer history, requests a full-damage repaint, and forces the pipeline hot so Black Frame Insertion stays stable. <code>ro.surface_flinger.primary_display_orientation</code> is now always honoured over vendor-reported orientation.</li>
+</ul>
+</details>
+<details>
+<summary>Changes</summary>
+<ul>
+<li><strong><code>persist.gammaos.refresh.lock</code> hardening:</strong> scheduler-side refresh-rate heuristics suppressed while locked, RefreshRatePolicy holds the locked rate across windowing changes, VsyncModulator cannot silently drop cadence to ~60 Hz on a 120 Hz panel.</li>
+<li><strong>Magisk updated</strong> (both <code>magisk.tar.gz</code> and <code>magisk2.tar.gz</code>).</li>
+<li><strong>Trebuchet all-apps drawer</strong> column/row math fixed for 1:1 aspect-ratio panels.</li>
+</ul>
+</details>
+<details>
+<summary>Bug fixes</summary>
+<ul>
+<li><strong>D8300 hotplug races</strong> on both Audio and Display: DisplayManagerService, ActivityTaskManagerService, DisplayAreaPolicy, DisplayContent, RootWindowContainer, and the Performance QS tile hardened so same-cycle plug/unplug no longer leaves the window hierarchy bound to a stale display.</li>
+<li><strong>GammaEQ speaker-route flag stuck at 0 after hotplug</strong> - <code>sys.gammaeq.route.spk</code> can now only be cleared by mixer-style output threads (MIXER / DUPLICATING / SPATIALIZER / BIT_PERFECT); any output thread may assert "1" whenever speaker is in the output device set. Stops GammaEQ going silent on speaker until reboot when a transient DIRECT/OFFLOAD thread lost a race with the mixer thread during headphone unplug.</li>
+</ul>
+</details>
+<hr>
+<h2>v1.2.0 (December 2025)</h2>
+<p>A major feature-expansion release: the first cut of <strong>DualStack</strong> for multi-display handhelds, a system-wide <strong>shader pipeline (GammaShader)</strong>, a <strong>Black Frame Insertion (GammaBFI)</strong> engine for motion clarity, <strong>GammaRGB</strong> rewritten as an in-process framework sampler, an <strong>audio EQ (GammaEQ)</strong>, and a long list of UI, orientation, HDMI, and taskbar improvements from the v1.0→v1.2 development cycle.</p>
+<details>
+<summary>New: DualStack - initial multi-display emulation framework</summary>
+<blockquote><strong>Why this matters:</strong> dual-screen handhelds are powerful but painful on stock Android - everything assumes one display. DualStack gives apps a real second SystemUI, per-app resolution targeting, and lifecycle management for the second screen.</blockquote>
+<ul>
+<li><strong>Added - <code>DualStackController</code> (~640 LoC)</strong> plus hooks in DisplayManagerService, DisplayContent, DisplayRotation, ActivityTaskManagerService, RootWindowContainer, WindowManagerService and StorageManager - the foundation for running two independent app stacks, one per display.</li>
+<li><strong>Added - DualStackControl user-facing app</strong> and a DualStack Quick Settings configuration tile.</li>
+<li><strong>Added - Per-app resolution enhancement</strong> path for DualStack via ActivityRecord override.</li>
+<li><strong>Added - RetroArch secondary-display override</strong> (<code>GammaDualFocusTile</code>, ActivityStarter + RootWindowContainer mods).</li>
+<li><strong>Added - Secondary-screen application lifecycle</strong> management (start options, pause/resume, finish semantics).</li>
+<li><strong>Added - Secondary-screen live wallpaper support</strong> (WallpaperManagerService + SecondaryDisplayLauncher).</li>
+<li><strong>Added - Secondary-display launcher override prop</strong> (<code>persist.gammaos.secondary_home</code>).</li>
+<li><strong>Added - Per-display rotation + per-device touch→display mapping</strong> via runtime props (<code>persist.gsf.rot.<displayId></code>, <code>persist.gsf.sec_rot</code>, <code>persist.gif.map.<device></code>, <code>persist.gif.map.uid.<device></code>, <code>persist.gif.map.port.<device></code>, <code>persist.gif.rot.<device></code>).</li>
+<li><strong>Added - Unique display names</strong> so ES-DE and similar apps can target "the other" display by name.</li>
+</ul>
+</details>
+<details>
+<summary>New: GammaShader - system-wide post-processing</summary>
+<blockquote><strong>Why this matters:</strong> retro and emulator fans want CRT masks, LCD grids, and scanline effects across the whole UI, not just inside RetroArch. GammaShader hooks Skia's <code>SkRuntimeEffect</code> into SurfaceFlinger's RenderEngine so everything on screen gets the same look.</blockquote>
+<ul>
+<li><strong>Added - CRT-Simple</strong> Skia filter (with optional blur and a WIP border-blur effect).</li>
+<li><strong>Added - LCD3x</strong> pixel-grid shader.</li>
+<li><strong>Added - Dedicated ShaderControl app and GammaShader QS tile</strong> for picking and tuning effects.</li>
+<li><strong>Changed - Multiple passes of GPU-cost optimisations;</strong> CRT-Simple decoupled from the old BFI+CTM coupling so shaders and BFI can be enabled independently.</li>
+</ul>
+</details>
+<details>
+<summary>New: GammaBFI - Black Frame Insertion for motion clarity</summary>
+<blockquote><strong>Why this matters:</strong> LCD sample-and-hold blur is brutal on fast-scrolling retro games. BFI inserts black frames between rendered frames so moving pixels look sharp, at the cost of some brightness. GammaBFI implements it two ways so it works everywhere, and pairs with a hard 120 Hz lock so the display never drops to 60 Hz and breaks the effect.</blockquote>
+<ul>
+<li><strong>Added - Present-aligned BFI (CTM mode, default)</strong> via per-frame HWC Color Transform blackout.</li>
+<li><strong>Added - RenderEngine fallback (RE mode)</strong> via Skia black-replace for HWCs that dislike CTM.</li>
+<li><strong>Added - Global 120 Hz refresh lock</strong> (<code>persist.gammaos.refresh.lock=1</code>) that ignores per-layer <code>setFrameRate()</code> votes, pins min=max=highest Hz in the DisplayModeDirector, and no-ops the idle/kernel refresh-rate timers. Apps and animations can no longer drag the panel down to 60.</li>
+<li><strong>Added - Cadence presets</strong> (<code>persist.gammaos.bfi.preset = 120:60 | 180:60 | 240:120 | 240:60</code>) and arbitrary insertion patterns via <code>persist.gammaos.bfi.pattern</code>, with <code>persist.gammaos.bfi.debug</code> for diagnostics.</li>
+<li><strong>Added - Polarity-change scheduling</strong> to avoid long-term panel burn-in; <strong><code>persist.gammaos.bfi.black_floor 0.01</code></strong> for vendors that can't drive literal-zero blacks.</li>
+<li><strong>Added - Global BFI QS tile</strong> and <strong>Global Refresh Rate QS tile.</strong></li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>BFI no longer flickers when a background blur is active (dialogs, wallpaper picker).</li>
+<li>Screen no longer goes permanently black on disable - clean fallback to the last content frame.</li>
+<li>Hardened BFI behaviour across SystemUI dialogs and overlays, including polarity-change flutter reduction.</li>
+<li>VSync enforcement regressions across non-BFI builds guarded behind additional <code>persist.gammaos.*</code> props so default behaviour is unchanged.</li>
+</ul>
+</details>
+<details>
+<summary>New: GammaRGB - in-process LED colour sync</summary>
+<blockquote><strong>Why this matters:</strong> devices with RGB LEDs (analog sticks, case accents) look way better when the LEDs sample on-screen colour live. The old version was an out-of-tree C binary that drifted from Android's brightness slider and raced the GPU. The rewrite runs inside SurfaceFlinger and just works.</blockquote>
+<ul>
+<li><strong>Added - <code>GammaRgbSampler</code> ported into frameworks</strong> under SurfaceFlinger, replacing the standalone C sampler with an in-process implementation hooked directly into composition.</li>
+<li><strong>Added - Manual colour mode + split left/right colour support.</strong></li>
+<li><strong>Added - Fade transitions</strong> between sampled RGB values (smooths stepping at lower sample rates).</li>
+<li><strong>Added - Brightness sync</strong> via the user brightness prop instead of sysfs, so LED intensity tracks the Android brightness slider precisely.</li>
+<li><strong>Added - Persistent primary hex colour</strong> so your last manual colour survives reboot.</li>
+<li><strong>Added - Dedicated JoystickLedPicker app</strong> (<code>com.gammaos.joystickled</code>) with a colour-wheel UI and custom-effects support.</li>
+<li><strong>Added - GammaRGB QS tile</strong> alongside Immersive Mode, External Docking, External Mirror, and External Resize tiles.</li>
+<li><strong>Changed - Sampler pauses while the device is asleep or otherwise off</strong>, saving power and avoiding spurious LED flashes. PowerManagerService gained additional screen-state checks.</li>
+</ul>
+</details>
+<details>
+<summary>New: GammaEQ - system-wide audio EQ</summary>
+<blockquote><strong>Why this matters:</strong> built-in Android audio is flat and no emulator ships its own EQ. GammaEQ hooks in near the fast mixer so every output - games, emulators, music, even UI - gets the same curve.</blockquote>
+<ul>
+<li><strong>Added - In-process audio EQ</strong> near the fast mixer (FastMixer + Threads + AudioPolicyManager). Applied to all audio output, not just media.</li>
+<li><strong>Added - Runtime gate</strong> via <code>persist.sys.gammaeq.enable</code>.</li>
+<li><strong>Added - GammaEQ settings app</strong> (<code>com.gammaos.gammaeq</code>) with 10-band UI and a bundled preview track, plus a QS tile.</li>
+</ul>
+</details>
+<details>
+<summary>New: Taskbar &amp; Trebuchet overhaul for handheld navigation</summary>
+<blockquote><strong>Why this matters:</strong> Android's stock 3-button nav bar is tiny, hard to hit, and wastes screen space on handhelds. Repurposing the Taskbar as the nav surface gives you bigger targets, an app-drawer icon, and consistent UX on secondary displays.</blockquote>
+<ul>
+<li><strong>Added - Taskbar drives 3-button navigation system-wide</strong> (NavigationBarControllerImpl + TaskbarActivityContext wired together). Taskbar also runs on secondary displays.</li>
+<li><strong>Added - Reworked taskbar layout</strong> for handhelds: hotseat icons removed, all-apps icon moved to the left, nav buttons centred, taskbar height reduced, transient/auto-hide disabled.</li>
+<li><strong>Changed - Touch above the taskbar captured correctly</strong> (no more dead-zone touches leaking past it); Trebuchet logging trimmed.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>App launches from the taskbar no longer fail.</li>
+<li>Quickstep overview no longer overlaps the nav bar.</li>
+<li>Split-screen transitions from Quickstep no longer hang.</li>
+<li>Crash when switching between gesture and 3-button nav on dual-taskbar devices.</li>
+<li>Tablet-UI detection regression on wide panels.</li>
+</ul>
+</details>
+<details>
+<summary>New: Immersive Mode, Forced Landscape, Orientation &amp; Platform</summary>
+<ul>
+<li><strong>Added - Immersive Mode (<code>persist.gammaos.immersive</code>)</strong> with full-screen UX across SystemUI (DisplayPolicy + InsetsPolicy + NotificationPanelViewController + QuickSettingsController + ShadeControllerImpl) plus a dedicated QS tile.</li>
+<li><strong>Added - DC Dimming emulation</strong> via DisplayPowerController's modulated brightness curve, with Settings + QS tile entry.</li>
+<li><strong>Added - Ultra Powersave</strong> mode in PowerManagerService.</li>
+<li><strong>Added - Forced landscape when auto-rotate is off</strong>, with square-panel handling: natural orientation preserved and immediate 90°/270° flips blocked via a short grace window while sensor autorotation still works.</li>
+<li><strong>Added - Sensor + touch orientation decoupled from device tree</strong> via runtime props.</li>
+<li><strong>Added - ANR disabled</strong> (AppNotRespondingDialog / AnrController / AnrHelper / StackTracesDumpHelper / ActivityManagerService) so the system never interrupts gaming with "app not responding" prompts.</li>
+<li><strong>Added - "Stop random wakes" guard</strong> in PowerManagerService.</li>
+<li><strong>Added - Delay before entering deep sleep</strong> (audio-aware entry via FastMixer).</li>
+<li><strong>Added - A14 port of GammaOS button behaviour</strong> into <code>PhoneWindowManager</code>: BACK + VOLUME UP/DOWN for stepped screen brightness, RetroArch override (<code>persist.gammaos.retroarchoverride.backbutton</code>) turning short BACK into F1, long BACK into ESC, and BACK + any physical key into <code>BTN_SELECT</code> via <code>sendevent</code>.</li>
+<li><strong>Changed - RetroArch</strong> updated; hotkey combos no longer stick with the back-button override enabled.</li>
+</ul>
+</details>
+<details>
+<summary>New: HDMI, external display &amp; audio routing</summary>
+<ul>
+<li><strong>Added - AudioDeviceBroker priority order:</strong> SCO / LE / HearingAid (comm paths) → BT A2DP → wired headset/headphones/line → USB headset/device, with HDMI slotting correctly instead of stealing the speaker path.</li>
+<li><strong>Added - Allwinner HDMI audio workaround;</strong> HDMI-specific logic gated to non-Unisoc chipsets after an Allwinner-vs-Unisoc regression.</li>
+<li><strong>Added - Optionally forced GPU composition</strong> while an external physical display is connected (two rounds keyed off vendor behaviour).</li>
+<li><strong>Added - External monitor options</strong> to resize the external display and turn off the primary built-in display.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Display mirroring no longer fails to show on external displays.</li>
+<li>Mirror aspect ratio now correct.</li>
+<li>HDMI audio switching lag on disconnect reduced.</li>
+<li>AudioDeviceInventory consistency fix so HDMI detection no longer overrides the speaker path.</li>
+</ul>
+</details>
+<details>
+<summary>New: Storage, Telephony, SetupWizard, SystemUI assets</summary>
+<ul>
+<li><strong>Added - Stable UUID for external storage</strong> (PublicVolume/PrivateVolume/VolumeBase + init.rc bootstrap), so app data tied to an SD card survives remount.</li>
+<li><strong>Changed - Scoped storage further relaxed;</strong> input-device wake disabled in the same pass; a narrower file-access relaxation after reverting the earlier, more aggressive patch.</li>
+<li><strong>Changed - Telephony support removed</strong> (generic_system.mk / handheld_system.mk / telephony_*.mk / no_telephony.xml SystemConfig + PHH Treble + framework/SystemUI resource tweaks). Handhelds don't need a dialer or SMS.</li>
+<li><strong>Changed - SetupWizard fully rebranded</strong> for GammaOS (new logo, reworked welcome/settings layouts, rewritten Lineage + user-mode scripts, updated TV layout, substantial changes to BaseSetupWizardActivity and LineageSettingsActivity).</li>
+<li><strong>Added - Ported A13 QS tiles:</strong> ABXY, AnalogAxis/Calibration/Deadzone/Sensitivity, DC Dimming, Deep Sleep, Dpad/Analog Toggle, Fan, GammaRGB, Mapping Editor, Performance.</li>
+<li><strong>Added - USB QS tile for AYANEO</strong>; removed XBOX controller <code>.kl</code> in favour of the new remapping stack.</li>
+<li><strong>Added - GammaOS Global Actions / Power menu:</strong> live memory/CPU/battery header, forced white tint for legacy global-actions icons, kill-foreground/kill-background/kill-all and Home shortcuts, Home key action added alongside Kill App in LineageParts.</li>
+<li><strong>Added - SurfaceFlinger background-blur</strong> enabled by default; Berry Black theme on by default; reduced dialog/button corner radii; letterbox blur/dark scrim adjusted.</li>
+<li><strong>Added - LineageParts saturation slider</strong> with live SurfaceFlinger integration and a rainbow preview bar; TwoStatePreference migration; recycler padding for DPAD focus; Trust onboarding removed.</li>
+<li><strong>Fixed - LegacyGlobalActions CPU usage calculation</strong> now aggregates <code>/proc/stat</code>'s <code>cpu</code> line (iowait treated as idle), delta-based with priming, EMA smoothing α=0.3, 500 ms poll.</li>
+<li><strong>Added - Defaults changed:</strong> dark/night mode on, freeform/multi-window on, seamless rotation on, accelerated colour transforms on; strong-auth-on-boot, safe media volume, AOD, pickup gestures, QR lockscreen shortcut, and Safety Center all off.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Immersive mode + QS shade closing early.</li>
+<li>Presentation on secondary displays.</li>
+<li>Secondary-panel sleep.</li>
+<li>Crash when switching nav modes with dual taskbar.</li>
+<li>VSync enforcement regressions (guarded behind props for per-device compatibility).</li>
+<li>Random wakes stopped.</li>
+<li>Storage access regression on some MTK devices.</li>
+<li><code>LegacyGlobalActions</code> UI fixes, QS updates, WM rotation updates.</li>
+</ul>
+</details>
+<hr>
+<h2>v1.1 series (August-November 2025)</h2>
+<p>Point releases for <strong>Anbernic T618</strong> (RG405M / RG405V / RG505), a <strong>GameMT E6 MAX</strong> re-release, the <strong>Anbernic RG DS preview</strong>, and <strong>Mangmi Air X</strong>. These builds brought the A14 / LineageOS 21 port online on a wider device set while the v1.2 feature rollout was in progress.</p>
+<details>
+<summary>Highlights</summary>
+<ul>
+<li><strong>A14 port of GammaOS key customisations</strong> (<code>PhoneWindowManager</code>, SetupWizard, Settings, custom system props, SELinux domains) from the A13 codebase.</li>
+<li>Port of <strong>button remap / analog calibration / layout persistence</strong> stack from A13.</li>
+<li>Early <strong>Taskbar-driven 3-button navigation</strong> migration.</li>
+<li>Initial <strong>immersive-mode</strong> and <strong>forced-landscape</strong> experimentation.</li>
+<li><strong>Vendor quirk fixes</strong> for Allwinner, MediaTek and Unisoc targets (HDMI audio, storage, rotation).</li>
+<li><strong>GNext branding</strong> added (boot logo, default wallpapers, GammaOS assets).</li>
+<li><strong>GammaEQ</strong> initial integration (refined and gated in v1.2).</li>
+<li><strong>Relaxed scoped storage + stable external-storage UUID.</strong></li>
+</ul>
+</details>
+<hr>
+<h2>v1.0.0 - Initial release</h2>
+<details>
+<summary>Core System</summary>
+<ul>
+<li><strong>Android 13 / LineageOS 20 Base</strong>: A clean, debloated build for snappy performance and minimal bloat.  </li>
+<li><strong>Google Services & Lite Option</strong>: Full Google Play Store support in standard builds, or choose "Lite" to forgo Google apps and maximize performance.  </li>
+<li><strong>Aurora Store</strong>: Seamlessly sideload apps without needing a Google account.</li>
+</ul>
+</details>
+<details>
+<summary>User Interface & Navigation</summary>
+<ul>
+<li><strong>Daijisho Launcher</strong>: Pre-configured for RetroArch (GB, GBC, GBA, NES, SNES, Genesis, PSX). (BIOS files must be supplied by the user.)  </li>
+<li><strong>App Drawer in Navigation Bar</strong>: Instantly access any installed app from the nav bar, no more returning to home to switch apps.  </li>
+<li><strong>Screen Rotation Controls</strong>: Enforce landscape mode when rotation is disabled, ensuring your games and apps stay in the correct orientation.</li>
+</ul>
+</details>
+<details>
+<summary>Input & Controls</summary>
+<ul>
+<li><strong>Universal Button Remapping</strong>: Remap any physical button to any other key or button input, giving you total flexibility over your gamepad layout.  </li>
+<li><strong>Analog Stick Calibration</strong>: Fine-tune stick behavior by adjusting range and deadzone settings for tighter, more precise controls.  </li>
+<li><strong>L2/R2 Fixes</strong>: Corrected L2 and R2 button behavior to ensure compatibility in games and apps.  </li>
+<li><strong>Layout Persistence</strong>: Once you choose a button layout (XBOX, NS, etc.), it remains across reboots, no reconfiguration required.</li>
+</ul>
+</details>
+<details>
+<summary>Display & Lighting</summary>
+<ul>
+<li><strong>DC Dimming Emulation</strong>: Reduce PWM flicker on devices that exhibit it, making long play sessions easier on the eyes.  </li>
+<li><strong>GammaRGB LED Sync</strong>: For supported devices, mirror on-screen colors to RGB LEDs on the analog sticks and synchronize LED brightness with screen brightness.  </li>
+<li><strong>60 Hz Refresh Rate & Oversharpening Fixes</strong>: Smooth display performance with corrected refresh and oversharpening issues.</li>
+</ul>
+</details>
+<details>
+<summary>Performance & Power</summary>
+<ul>
+<li><strong>Performance Governors</strong>: CPU, GPU, and memory tuned to performance profiles for extra speed when you need it.  </li>
+<li><strong>Quick Settings Tiles</strong>: One-tap toggles for performance modes, analog sensitivity adjustments, ABXY remapping, axis inversion, and D-pad/analog swaps, and much more.  </li>
+<li><strong>Deep Sleep Mode</strong>: Force-freeze background apps via cgroup modifications to prevent emulators or other apps from running unnecessarily (use with caution, some apps may break).</li>
+</ul>
+</details>
+<details>
+<summary>Root & Modding</summary>
+<ul>
+<li><strong>Magisk Root</strong>: Pre-installed root access with Magisk, ready for modules, custom ROM tweaks, or system modifications.</li>
+</ul>
+</details>
+<details>
+<summary>Storage & Security</summary>
+<ul>
+<li><strong>Relaxed Scoped Storage</strong>: Loosened security requirements so apps can freely access files without being blocked, making file management and emulator setups simpler.</li>
+</ul>
+</details>
+</body>
+</html>
