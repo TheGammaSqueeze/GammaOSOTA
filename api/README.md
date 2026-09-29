@@ -48,3 +48,21 @@ see the update.
 | anbernicrgds/full   | RG_DS_..._Full_v1.4.1     | 1786583905 |
 | anbernicrgrotate/full | RG_Rotate_..._Full_v1.4.1 | 1786583905 |
 | anbernicrgrotate/lite | RG_Rotate_..._Lite_v1.4.1 | 1786580986 |
+
+### 1.4.3 reference values
+
+| endpoint | serves | ro.build.date.utc |
+|----------|--------|-------------------|
+| anbernicrgdsplus/core | RG_DS_Plus_..._Core_v1.4.3 | 1790694240 |
+
+## Channel names are the `variant`, not a guess
+
+The Updater polls `api/v1/{ro.gammaos.device}/{ro.gammaos.variant}`, and
+`vendor/lineage/build/core/main_version.mk` derives the variant from the product
+name: `tv_*` -> **core**, `bgN` -> **full**, everything else -> **lite**. An Android
+TV build therefore asks for `.../core`, so that directory has to exist for it.
+Pointing a `lite` endpoint at a Core package does not help a Core device: it never
+requests `lite`.
+
+The `id` field is the first 16 hex characters of the served zip's SHA-256, and
+`size` is that zip's exact byte count.
