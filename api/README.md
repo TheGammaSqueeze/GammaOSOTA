@@ -64,9 +64,19 @@ system builds, each with its own value.
 | endpoint | serves | ro.build.date.utc |
 |----------|--------|-------------------|
 | anbernicrgds/core     | RG_DS_..._Core_v1.4.4      | 1790977387 |
-| anbernicrgds/lite     | RG_DS_..._Lite_v1.4.4      | 1791015900 |
+| anbernicrgds/lite     | RG_DS_..._Core_v1.4.4 (see below) | 1790977387 |
 | anbernicrgds/full     | RG_DS_..._Full_v1.4.4      | 1791020312 |
 | anbernicrgdsplus/core | RG_DS_Plus_..._Core_v1.4.4 | 1790977387 |
+
+**Why anbernicrgds/lite serves the Core package.** The core variant only exists
+since 2026-08-17 (after the 1.4.1 release), so every RG DS on 1.4.1 Core reports
+ro.gammaos.variant=lite and polls this endpoint. No Lite build was ever
+published for the RG DS at 1.4.1, so everything polling lite today is a Core
+device, and it must be given the Core package (which moves it to the core
+variant for the next release). A device freshly installed with Lite 1.4.4 also
+polls lite but has a later ro.build.date.utc (1791015900) than this entry, so
+it is not offered the Core package. Switch this endpoint to the Lite package
+only for a release newer than Lite 1.4.4.
 
 ## Channel names are the `variant`, not a guess
 
