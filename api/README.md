@@ -58,11 +58,14 @@ see the update.
 ### 1.4.4 reference values
 
 Both Core packages serve the same 20261002 system image, so they share one
-ro.build.date.utc.
+ro.build.date.utc. The RG DS Lite and Full packages are separate 20261003
+system builds, each with its own value.
 
 | endpoint | serves | ro.build.date.utc |
 |----------|--------|-------------------|
 | anbernicrgds/core     | RG_DS_..._Core_v1.4.4      | 1790977387 |
+| anbernicrgds/lite     | RG_DS_..._Lite_v1.4.4      | 1791015900 |
+| anbernicrgds/full     | RG_DS_..._Full_v1.4.4      | 1791020312 |
 | anbernicrgdsplus/core | RG_DS_Plus_..._Core_v1.4.4 | 1790977387 |
 
 ## Channel names are the `variant`, not a guess
