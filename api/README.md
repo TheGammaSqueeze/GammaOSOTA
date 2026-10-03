@@ -55,6 +55,16 @@ see the update.
 |----------|--------|-------------------|
 | anbernicrgdsplus/core | RG_DS_Plus_..._Core_v1.4.3 | 1790694240 |
 
+### 1.4.4 reference values
+
+Both Core packages serve the same 20261002 system image, so they share one
+ro.build.date.utc.
+
+| endpoint | serves | ro.build.date.utc |
+|----------|--------|-------------------|
+| anbernicrgds/core     | RG_DS_..._Core_v1.4.4      | 1790977387 |
+| anbernicrgdsplus/core | RG_DS_Plus_..._Core_v1.4.4 | 1790977387 |
+
 ## Channel names are the `variant`, not a guess
 
 The Updater polls `api/v1/{ro.gammaos.device}/{ro.gammaos.variant}`, and
